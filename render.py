@@ -120,9 +120,56 @@ def desenha_legenda(base, grupo, t):
         y += 110
 
 
-def render(imagens, audio, palavras, gancho, preco, saida, duracao_audio):
+def preparar_fundo(clipes, saida, pasta):
+    """Normaliza os clipes reais do produto (9:16, 30fps, sem audio) e junta num video de fundo."""
+    partes = []
+    for i, c in enumerate(clipes):
+        p = os.path.join(pasta, f"norm{i}.mp4")
+        filtro = (f"[0:v]fps={FPS},split[a][b];"
+                  f"[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=25:2,eq=brightness=-0.18[bg];"
+                  f"[b]scale={W}:{H}:force_original_aspect_ratio=decrease[fg];"
+                  f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]")
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", c, "-t", "12", "-filter_complex", filtro,
+                            "-map", "[v]", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                            "-pix_fmt", "yuv420p", p], capture_output=True, text=True)
+        if r.returncode == 0 and os.path.getsize(p) > 10000:
+            partes.append(p)
+        else:
+            print("clipe ignorado:", c, r.stderr[-300:])
+    if not partes:
+        return None
+    lista = os.path.join(pasta, "clipes.txt")
+    with open(lista, "w") as f:
+        for p in partes:
+            f.write(f"file '{p}'\n")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lista,
+                    "-c", "copy", saida], check=True)
+    return saida
+
+
+class LeitorVideo:
+    """Le quadros RGB de um video em loop (reinicia quando acaba)."""
+    def __init__(self, caminho):
+        self.caminho = caminho; self.p = None
+    def _abrir(self):
+        self.p = subprocess.Popen(["ffmpeg", "-loglevel", "error", "-i", self.caminho, "-f", "rawvideo",
+                                   "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-"],
+                                  stdout=subprocess.PIPE)
+    def proximo(self):
+        for _ in range(2):
+            if self.p is None:
+                self._abrir()
+            dados = self.p.stdout.read(W * H * 3)
+            if len(dados) == W * H * 3:
+                return Image.frombytes("RGB", (W, H), dados)
+            self.p.kill(); self.p = None
+        raise RuntimeError("nao consegui ler o video de fundo")
+
+
+def render(imagens, audio, palavras, gancho, preco, saida, duracao_audio, fundo_video=None):
     total = duracao_audio + 0.7
     n_frames = int(total * FPS)
+    leitor = LeitorVideo(fundo_video) if fundo_video else None
     fotos = [Image.open(p).convert("RGB") for p in imagens] or [Image.new("RGB", (800, 800), (240, 200, 210))]
     fundos = [cobrir(f, W, H).filter(ImageFilter.GaussianBlur(38)).point(lambda v: int(v * 0.55)) for f in fotos]
     frente = []
@@ -150,15 +197,18 @@ def render(imagens, audio, palavras, gancho, preco, saida, duracao_audio):
         t = i / FPS
         k = min(int(t / seg), len(fotos) - 1)
         prog = (t - k * seg) / seg
-        frame = fundos[k].copy()
-        fr = frente[k]
-        esc = 1.0 + 0.08 * prog
-        im = fr.resize((int(fr.width * esc), int(fr.height * esc)), Image.BILINEAR)
-        # entrada com leve "pop" nos primeiros 0,25s de cada foto
-        if t - k * seg < 0.25:
-            s = 0.85 + 0.15 * ((t - k * seg) / 0.25)
-            im = im.resize((max(1, int(im.width * s)), max(1, int(im.height * s))), Image.BILINEAR)
-        frame.paste(im, ((W - im.width) // 2, 800 - im.height // 2), im)
+        if leitor:
+            frame = leitor.proximo()
+        else:
+            frame = fundos[k].copy()
+            fr = frente[k]
+            esc = 1.0 + 0.08 * prog
+            im = fr.resize((int(fr.width * esc), int(fr.height * esc)), Image.BILINEAR)
+            # entrada com leve "pop" nos primeiros 0,25s de cada foto
+            if t - k * seg < 0.25:
+                s = 0.85 + 0.15 * ((t - k * seg) / 0.25)
+                im = im.resize((max(1, int(im.width * s)), max(1, int(im.height * s))), Image.BILINEAR)
+            frame.paste(im, ((W - im.width) // 2, 800 - im.height // 2), im)
         frame.paste(gancho_l, (0, 0), gancho_l)
         if preco_l is not None and t > 1.0:
             frame.paste(preco_l, (W - preco_l.width - 30, 470), preco_l)
@@ -172,5 +222,7 @@ def render(imagens, audio, palavras, gancho, preco, saida, duracao_audio):
                 desenha_legenda(frame, atual, t)
         proc.stdin.write(frame.tobytes())
     proc.stdin.close()
+    if leitor and leitor.p:
+        leitor.p.kill()
     if proc.wait() != 0:
         raise RuntimeError("ffmpeg falhou")

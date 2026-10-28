@@ -79,14 +79,22 @@ def main():
         print("TTS indisponivel, usando audio mudo:", e)
         palavras = narracao_muda(t["narracao"], mp3)
 
-    fotos = baixar_imagens(imgs, OUT)
+    vids = payload.get("videos", "") or ""
+    vids = [v.strip() for v in (vids if isinstance(vids, list) else vids.replace("\n", ",").split(",")) if v.strip()]
+    fundo = render.preparar_fundo(vids[:4], os.path.join(OUT, "fundo.mp4"), OUT) if vids else None
+    if fundo:
+        print("Usando video real do produto:", len(vids), "clipe(s)")
+        fotos = []
+    else:
+        fotos = baixar_imagens(imgs, OUT)
     video = os.path.join(OUT, "video.mp4")
     render.render(fotos, mp3, palavras, t["gancho"], str(payload.get("preco") or "").strip(),
-                  video, duracao(mp3))
+                  video, duracao(mp3), fundo_video=fundo)
 
     meta = {"row_id": str(payload.get("row_id", "")), "titulo": t["titulo"], "descricao": t["descricao"],
             "tags": t["tags"], "comodo": t["comodo"], "playlist_id": t["playlist_id"], "gancho": t["gancho"],
-            "duracao": round(duracao(video), 1)}
+            "duracao": round(duracao(video), 1),
+            "data": __import__("datetime").datetime.now(__import__("zoneinfo").ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")}
     json.dump(meta, open(os.path.join(OUT, "meta.json"), "w"), ensure_ascii=False)
     print("OK", video, meta["duracao"], "s")
 

@@ -15,8 +15,8 @@ linhas = list(csv.DictReader(io.StringIO(r.text)))
 saida = os.environ.get("GITHUB_OUTPUT", "/dev/null")
 for i, l in enumerate(linhas):
     l = {k.strip().lower(): (v or "").strip() for k, v in l.items() if k}
-    if l.get("nome") and l.get("imagens") and l.get("status", "").lower() in ("pendente", ""):
-        payload = {"row_id": str(i + 2), **{k: l.get(k, "") for k in ("nome", "comodo", "preco", "detalhes", "imagens", "link_afiliado")}}
+    if l.get("nome") and (l.get("imagens") or l.get("videos")) and l.get("status", "").lower() in ("pendente", ""):
+        payload = {"row_id": str(i + 2), **{k: l.get(k, "") for k in ("nome", "comodo", "preco", "detalhes", "imagens", "videos", "link_afiliado")}}
         json.dump(payload, open("payload.json", "w"), ensure_ascii=False)
         print("Produto escolhido (linha", i + 2, "):", payload["nome"])
         open(saida, "a").write("pular=0\n")
