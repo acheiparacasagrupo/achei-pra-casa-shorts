@@ -6,6 +6,13 @@ GRUPO = os.environ.get("LINK_GRUPO", "https://chat.whatsapp.com/Dm1Mv7qgbPRDNZN1
 HASH_TITULO = "#achadinhos #shopee #dicas"
 HASH_BASE = ["#achadinhos", "#shopee", "#dicas", "#achadinhosdacasa", "#casaorganizada",
              "#utilidadesdomesticas", "#donadecasa", "#shopeebrasil", "#achadosdashopee"]
+PLAYLISTS = {
+    "cozinha": "PLZDnLFzStzYQ",
+    "banheiro": "PLXg5SUpFX7Do",
+    "organizacao": "PLG7M7_pm1_Fs",
+    "limpeza": "PLGJvMq4wDZGo",
+    "decoracao": "PLeB85ZROaMEE",
+}
 HASH_COMODO = {
     "cozinha": ["#cozinha", "#cozinhaorganizada", "#utensiliosdecozinha"],
     "banheiro": ["#banheiro", "#banheirodecorado", "#banheiroorganizado"],
@@ -115,6 +122,7 @@ def gerar(prod):
         "descricao": descricao[:4900],
         "tags": out,
         "comodo": prod["comodo"],
+        "playlist_id": PLAYLISTS.get(prod["comodo"], PLAYLISTS["organizacao"]),
     }
 
 
