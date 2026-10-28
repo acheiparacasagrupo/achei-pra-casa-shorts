@@ -13,14 +13,17 @@ if r.text.lstrip().startswith("<"):
 
 linhas = list(csv.DictReader(io.StringIO(r.text)))
 saida = os.environ.get("GITHUB_OUTPUT", "/dev/null")
+candidatos = []
 for i, l in enumerate(linhas):
     l = {k.strip().lower(): (v or "").strip() for k, v in l.items() if k}
     if l.get("nome") and (l.get("imagens") or l.get("videos")) and l.get("status", "").lower() in ("pendente", ""):
-        payload = {"row_id": str(i + 2), **{k: l.get(k, "") for k in ("nome", "comodo", "preco", "detalhes", "imagens", "videos", "link_afiliado")}}
-        json.dump(payload, open("payload.json", "w"), ensure_ascii=False)
-        print("Produto escolhido (linha", i + 2, "):", payload["nome"])
-        open(saida, "a").write("pular=0\n")
-        break
+        candidatos.append((0 if l.get("videos") else 1, i, l))  # produtos com video real primeiro
+if candidatos:
+    _, i, l = sorted(candidatos, key=lambda c: (c[0], c[1]))[0]
+    payload = {"row_id": str(i + 2), **{k: l.get(k, "") for k in ("nome", "comodo", "preco", "detalhes", "imagens", "videos", "link_afiliado")}}
+    json.dump(payload, open("payload.json", "w"), ensure_ascii=False)
+    print("Produto escolhido (linha", i + 2, "):", payload["nome"], "| video real:", bool(l.get("videos")))
+    open(saida, "a").write("pular=0\n")
 else:
     print("Nenhum produto pendente na planilha.")
     open(saida, "a").write("pular=1\n")
