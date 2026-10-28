@@ -2,7 +2,7 @@
 Se nao houver chave ou a API falhar, usa um modelo de texto pronto."""
 import json, os, random, re, requests
 
-GRUPO = os.environ.get("LINK_GRUPO", "https://chat.whatsapp.com/Dm1Mv7qgbPRDNZN1zvLZRz")
+GRUPO = os.environ.get("LINK_GRUPO", "https://moraesb02.github.io/achei-pra-casa-shorts/grupo/")
 HASH_TITULO = "#achadinhos #shopee #dicas"
 HASH_BASE = ["#achadinhos", "#shopee", "#dicas", "#achadinhosdacasa", "#casaorganizada",
              "#utilidadesdomesticas", "#donadecasa", "#shopeebrasil", "#achadosdashopee"]
