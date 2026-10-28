@@ -1,0 +1,72 @@
+name: Gerar Short
+
+on:
+  schedule:
+    # 9h, 13h e 19h no horario de Brasilia (UTC-3)
+    - cron: '0 12 * * *'
+    - cron: '0 16 * * *'
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gerar-short
+  cancel-in-progress: false
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install -q edge-tts==7.3.1 pillow requests
+
+      - name: Escolher proximo produto da planilha
+        id: prox
+        run: python proximo.py
+
+      - name: Gerar video
+        if: steps.prox.outputs.pular == '0'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -f musica.mp3 ]; then export MUSICA=musica.mp3; fi
+          python run.py payload.json
+
+      - name: Publicar video como release
+        if: steps.prox.outputs.pular == '0'
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="short-$(jq -r '.row_id' out/meta.json)-${{ github.run_id }}"
+          gh release create "$TAG" out/video.mp4 --title "$TAG" --notes "Gerado automaticamente"
+          echo "url=https://github.com/${{ github.repository }}/releases/download/$TAG/video.mp4" >> "$GITHUB_OUTPUT"
+          gh release list --limit 200 --json tagName --jq '.[40:][].tagName' | while read t; do gh release delete "$t" --yes --cleanup-tag; done
+
+      - name: Avisar o Make (publicar no YouTube)
+        if: steps.prox.outputs.pular == '0'
+        env:
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+        run: |
+          jq --arg url "${{ steps.rel.outputs.url }}" '. + {video_url: $url}' out/meta.json > envio.json
+          cat envio.json
+          curl -sS -f -X POST -H "Content-Type: application/json" --data @envio.json "$MAKE_WEBHOOK_URL"
+
+      - name: Guardar video (backup)
+        if: always() && steps.prox.outputs.pular == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: short
+          path: out/
+          retention-days: 3
