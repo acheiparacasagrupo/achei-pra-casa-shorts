@@ -85,7 +85,7 @@ def main():
                   video, duracao(mp3))
 
     meta = {"row_id": str(payload.get("row_id", "")), "titulo": t["titulo"], "descricao": t["descricao"],
-            "tags": ",".join(t["tags"]), "comodo": t["comodo"], "playlist_id": t["playlist_id"], "gancho": t["gancho"],
+            "tags": t["tags"], "comodo": t["comodo"], "playlist_id": t["playlist_id"], "gancho": t["gancho"],
             "duracao": round(duracao(video), 1)}
     json.dump(meta, open(os.path.join(OUT, "meta.json"), "w"), ensure_ascii=False)
     print("OK", video, meta["duracao"], "s")
