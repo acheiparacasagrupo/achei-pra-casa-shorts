@@ -35,23 +35,29 @@ def _gemini(prod):
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         return None
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    modelos = [m for m in [os.environ.get("GEMINI_MODEL"), "gemini-flash-latest", "gemini-2.5-flash",
+               "gemini-2.0-flash", "gemini-flash-lite-latest"] if m]
     body = {
         "contents": [{"parts": [{"text": PROMPT.format(**prod)}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.9},
     }
-    for _ in range(3):
-        try:
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                headers={"x-goog-api-key": key}, json=body, timeout=60)
-            r.raise_for_status()
-            txt = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            data = json.loads(txt)
-            if data.get("gancho") and data.get("narracao"):
-                return data
-        except Exception as e:  # tenta de novo
-            print("Gemini falhou:", e)
+    for model in modelos:
+        for _ in range(2):
+            try:
+                r = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                    headers={"x-goog-api-key": key}, json=body, timeout=60)
+                if r.status_code == 404:
+                    print("Modelo indisponivel:", model)
+                    break
+                r.raise_for_status()
+                txt = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                data = json.loads(txt)
+                if data.get("gancho") and data.get("narracao"):
+                    print("Texto gerado pelo", model)
+                    return data
+            except Exception as e:  # tenta de novo
+                print("Gemini falhou:", model, str(e)[:200])
     return None
 
 
@@ -67,7 +73,7 @@ def _padrao(prod):
         "gancho": ganchos.get(prod["comodo"], "EU NÃO SABIA QUE PRECISAVA DISSO"),
         "narracao": [
             "Olha esse achadinho que eu encontrei pra sua casa!",
-            f"É {prod['nome'].lower()}, e resolve aquele problema do dia a dia.",
+            f"{prod['nome']}: resolve aquele problema do dia a dia.",
             "É prático, bonito e cabe em qualquer cantinho.",
             "O link com desconto tá no nosso grupo VIP, é só tocar em link clique aqui.",
         ],
