@@ -93,7 +93,7 @@ def main():
 
     meta = {"row_id": str(payload.get("row_id", "")), "titulo": t["titulo"], "descricao": t["descricao"],
             "tags": t["tags"], "comodo": t["comodo"], "playlist_id": t["playlist_id"], "gancho": t["gancho"],
-            "duracao": round(duracao(video), 1),
+            "duracao": round(duracao(video), 1),            "comentario": t["comentario"],
             "data": __import__("datetime").datetime.now(__import__("zoneinfo").ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")}
     json.dump(meta, open(os.path.join(OUT, "meta.json"), "w"), ensure_ascii=False)
     print("OK", video, meta["duracao"], "s")
