@@ -4,7 +4,7 @@ import csv, io, json, os, sys, requests
 
 PLANILHA = os.environ.get("PLANILHA_ID") or "1DEXtunlKTCBKu3lmYYPLp8X0nsuSNaRe8CaSLdExLbU"
 ABA = os.environ.get("PLANILHA_ABA") or "Produtos"
-url = f"https://docs.google.com/spreadsheets/d/{PLANILHA}/gviz/tq?tqx=out:csv&sheet={ABA}"
+url = f"https://docs.google.com/spreadsheets/d/{PLANILHA}/gviz/tq?tqx=out:csv&headers=1&sheet={ABA}"
 
 r = requests.get(url, timeout=30)
 r.raise_for_status()
