@@ -9,6 +9,8 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 FONTE = os.path.join(AQUI, "Poppins-Bold.ttf")
 AMARELO, ROSA, ESCURO, BRANCO = (255, 210, 63), (255, 90, 122), (30, 30, 46), (255, 255, 255)
 HANDLE = os.environ.get("HANDLE_CANAL", "@acheipracasaoficial")
+# Estilo do canal: so o video do produto + narracao, sem nenhum texto na tela
+COM_TEXTO = os.environ.get("COM_TEXTO", "0") == "1"
 
 
 def fonte(t):
@@ -174,7 +176,7 @@ def render(imagens, audio, palavras, gancho, preco, saida, duracao_audio, fundo_
     fundos = [cobrir(f, W, H).filter(ImageFilter.GaussianBlur(38)).point(lambda v: int(v * 0.55)) for f in fotos]
     frente = []
     for f in fotos:
-        r = min(960 / f.width, 860 / f.height)
+        r = min(1000 / f.width, 1500 / f.height)
         frente.append(caixa_arredondada(f.resize((int(f.width * r), int(f.height * r)), Image.LANCZOS), 40))
     gancho_l = camada_gancho(gancho); cta_l = camada_cta(); preco_l = camada_preco(preco)
     grupos = grupos_legenda(palavras)
@@ -208,18 +210,19 @@ def render(imagens, audio, palavras, gancho, preco, saida, duracao_audio, fundo_
             if t - k * seg < 0.25:
                 s = 0.85 + 0.15 * ((t - k * seg) / 0.25)
                 im = im.resize((max(1, int(im.width * s)), max(1, int(im.height * s))), Image.BILINEAR)
-            frame.paste(im, ((W - im.width) // 2, 800 - im.height // 2), im)
-        frame.paste(gancho_l, (0, 0), gancho_l)
-        if preco_l is not None and t > 1.0:
-            frame.paste(preco_l, (W - preco_l.width - 30, 470), preco_l)
-        if t >= inicio_cta:
-            a = min(1.0, (t - inicio_cta) / 0.3)
-            c = cta_l if a >= 1 else Image.blend(Image.new("RGBA", (W, H), (0, 0, 0, 0)), cta_l, a)
-            frame.paste(c, (0, 0), c)
-        else:
-            atual = next((g for g in grupos if g[0][0] - 0.05 <= t <= g[-1][1] + 0.15), None)
-            if atual:
-                desenha_legenda(frame, atual, t)
+            frame.paste(im, ((W - im.width) // 2, H // 2 - im.height // 2), im)
+        if COM_TEXTO:
+            frame.paste(gancho_l, (0, 0), gancho_l)
+            if preco_l is not None and t > 1.0:
+                frame.paste(preco_l, (W - preco_l.width - 30, 470), preco_l)
+            if t >= inicio_cta:
+                a = min(1.0, (t - inicio_cta) / 0.3)
+                c = cta_l if a >= 1 else Image.blend(Image.new("RGBA", (W, H), (0, 0, 0, 0)), cta_l, a)
+                frame.paste(c, (0, 0), c)
+            else:
+                atual = next((g for g in grupos if g[0][0] - 0.05 <= t <= g[-1][1] + 0.15), None)
+                if atual:
+                    desenha_legenda(frame, atual, t)
         proc.stdin.write(frame.tobytes())
     proc.stdin.close()
     if leitor and leitor.p:
