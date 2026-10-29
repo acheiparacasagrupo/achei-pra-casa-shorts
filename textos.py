@@ -2,13 +2,13 @@
 Se nao houver chave ou a API falhar, usa um modelo de texto pronto."""
 import json, os, random, re, requests
 
-GRUPO = os.environ.get("LINK_GRUPO", "https://moraesb02.github.io/achei-pra-casa-shorts/grupo/")
+GRUPO = os.environ.get("LINK_GRUPO", "https://acheiparacasagrupo.github.io/achei-pra-casa-shorts/grupo/")
 # Hashtags amplas do nicho (sempre presentes, poucas e fortes)
 HASH_NICHO = []
 PLAYLISTS = {
     "cozinha": "PLZDnLFzStzYQ",
     "banheiro": "PLXg5SUpFX7Do",
-    "organizacao": "PLG7M7_pm1_Fs",
+    "organizacao": "PLG7M7_pm1_Fs",hh
     "limpeza": "PLGJvMq4wDZGo",
     "decoracao": "PLeB85ZROaMEE",
 }
@@ -32,7 +32,7 @@ Pense primeiro: quem compra esse produto, qual problema ele resolve, e COMO essa
 - "palavra_chave": como o brasileiro pesquisa esse produto, 2 a 4 palavras, minusculas (ex: "escova eletrica de limpeza", "porta tempero giratorio", "luminaria com sensor").
 - "gancho": titulo em CAIXA ALTA, no maximo 50 caracteres, focado no BENEFICIO, na DOR resolvida ou na CURIOSIDADE. Pode citar o tipo de produto se isso deixar o titulo mais pesquisavel, mas nunca a marca nem o nome longo do anuncio. Formulas que funcionam no nicho: "O DETALHE QUE FALTAVA NA SUA COZINHA", "PARE DE SOFRER PRA LIMPAR O BOX", "EU NAO SABIA QUE PRECISAVA DISSO", "ESSA ESCOVA LIMPA O REJUNTE SOZINHA", "QUEM TEM CASA PEQUENA PRECISA VER ISSO". Sem emoji, sem hashtag, acentuacao correta.
 - "nome_curto": nome popular e curto do produto, 2 a 4 palavras, em CAIXA ALTA (ex: "ESCOVA ELETRICA 9 EM 1", "KIT CABECEIRA", "LUMINARIA COM SENSOR").
-- "narracao": lista de 4 a 6 frases curtas, faladas, tom animado e natural de amiga indicando um achado, total entre 55 e 75 palavras. Frase 1 = gancho forte que prende nos 2 primeiros segundos. Frases do meio = o problema que resolve e 2 beneficios concretos tirados dos detalhes. Ultima frase = CTA com a ideia: "O link com desconto ta no nosso grupo VIP, e so tocar em link clique aqui." Nao invente preco nem medidas que nao foram informadas. Sem emojis.
+- "narracao": lista de 4 a 6 frases curtas, faladas, tom animado e natural de amiga indicando um achado, total entre 55 e 75 palavras. Frase 1 = gancho forte que prende nos 2 primeiros segundos. Frases do meio = o problema que resolve e 2 beneficios concretos tirados dos detalhes. Ultima frase = CTA com a ideia: "Se voce quiser receber estes produtos com desconto para casa todos os dias, basta clicar no nome deste canal do YouTube e na bio do canal clicar no link para o WhatsApp." Nao invente preco nem medidas que nao foram informadas. Sem emojis.
 - "descricao": 2 frases vendedoras; a PRIMEIRA frase deve conter a palavra_chave de forma natural (SEO). Pode ter 1 ou 2 emojis.
 - "tags": 12 palavras-chave de busca, minusculas, sem #: variacoes da palavra_chave, o problema resolvido (ex: "como limpar rejunte"), o comodo e 2 termos do nicho ("achadinhos para casa", "achadinhos shopee").
 
@@ -83,7 +83,7 @@ def _padrao(prod):
             "Olha esse achadinho que eu encontrei pra sua casa!",
             f"{prod['nome']}: resolve aquele problema do dia a dia.",
             "É prático, bonito e cabe em qualquer cantinho.",
-            "O link com desconto tá no nosso grupo VIP, é só tocar em link clique aqui.",
+            "Se você quiser receber estes produtos com desconto para casa todos os dias, basta clicar no nome deste canal do YouTube e na bio do canal clicar no link para o WhatsApp.",
         ],
         "descricao": f"{prod['nome']} que vai facilitar sua rotina em casa. ✨",
         "tags": ["achadinhos", "achadinhos shopee", "achadinhos para casa", prod["comodo"],
