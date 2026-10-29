@@ -4,6 +4,14 @@ import json, os, random, re, requests
 
 GRUPO = os.environ.get("LINK_GRUPO", "https://acheiparacasagrupo.github.io/achei-pra-casa-shorts/grupo/")
 # Hashtags amplas do nicho (sempre presentes, poucas e fortes)
+COMENTARIO = (
+        "✨ Adorou esse achado? Imagina receber um assim TODO DIA! 🛒\n\n"
+        "Entra no nosso grupo VIP de ACHADINHOS para Casa no WhatsApp!\n"
+        "Todo dia eu mando os melhores produtos com CUPONS DE DESCONTO, igual esse aqui, antes de esgotar!\n\n"
+        "Gratuito, sem chat, so ofertas boas no seu WhatsApp todos os dias\n\n"
+        "Clica no link e entra agora:\n"
+        "{grupo}"
+)
 HASH_NICHO = []
 PLAYLISTS = {
     "cozinha": "PLZDnLFzStzYQ",
@@ -102,7 +110,7 @@ def _hashtag(h):
 
 # Mesmo metodo do canal de referencia: hashtags fixas no titulo e na descricao
 HASH_TITULO = "#achadinhos #shopee #dicas"
-HASH_DESCRICAO = "#achadinhos #compras #shopee #donadecasa"
+HASH_DESCRICAO = "#achadinhos #compras #shopee #donadecasa #utilidadesdomesticas #produtosparhacasa #dicasparacasa #casaorganizada #achados #achadinhosshopee #comprasinteligentes"
 
 
 def gerar(prod):
@@ -125,7 +133,7 @@ def gerar(prod):
         f"{GRUPO}\n"
         "O grupo é somente de postagem de produtos, sem chat.\n"
         "Nele você encontra achadinhos para casa com cupons de desconto todos os dias!\n\n"
-        f"{HASH_DESCRICAO}"
+                f"{HASH_DESCRICAO} {' '.join(HASH_COMODO.get(comodo, []))} #acheiparacasa #achadinhospracasa"
     )
     palavra = (data.get("palavra_chave") or prod["nome"]).strip()
     tags = list(dict.fromkeys([palavra.lower()] + [t.strip().lower() for t in data.get("tags", []) if t.strip()]
@@ -134,8 +142,9 @@ def gerar(prod):
     out, total = [], 0
     for t in tags:
         if total + len(t) + 1 > 450:
-            break
+                            break
         out.append(t); total += len(t) + 1
+    comentario = COMENTARIO.format(grupo=GRUPO)
     return {
         "gancho": gancho,
         "narracao": [s.strip() for s in data["narracao"] if s.strip()],
@@ -144,6 +153,7 @@ def gerar(prod):
         "tags": out,
         "comodo": comodo,
         "playlist_id": PLAYLISTS.get(comodo, PLAYLISTS["organizacao"]),
+                "comentario": comentario,
     }
 
 
