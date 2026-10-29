@@ -133,7 +133,7 @@ def gerar(prod):
         f"{GRUPO}\n"
         "O grupo é somente de postagem de produtos, sem chat.\n"
         "Nele você encontra achadinhos para casa com cupons de desconto todos os dias!\n\n"
-                f"{HASH_DESCRICAO} {' '.join(HASH_COMODO.get(comodo, []))} #acheiparacasa #achadinhospracasa"
+                f"{HASH_DESCRICAO} {' '.join(HASH_COMODO.get(comodo, []))} #acheiparacasa #achadinhospracasa {' '.join(h for h in [_hashtag(data.get('palavra_chave', ''))] + [_hashtag(t) for t in data.get('tags', [])[:5]] if h)}"
     )
     palavra = (data.get("palavra_chave") or prod["nome"]).strip()
     tags = list(dict.fromkeys([palavra.lower()] + [t.strip().lower() for t in data.get("tags", []) if t.strip()]
