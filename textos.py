@@ -16,7 +16,7 @@ HASH_NICHO = []
 PLAYLISTS = {
     "cozinha": "PLZDnLFzStzYQ",
     "banheiro": "PLXg5SUpFX7Do",
-    "organizacao": "PLG7M7_pm1_Fs",hh
+    "organizacao": "PLG7M7_pm1_Fs",
     "limpeza": "PLGJvMq4wDZGo",
     "decoracao": "PLeB85ZROaMEE",
 }
