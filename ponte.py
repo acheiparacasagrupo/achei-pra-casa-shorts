@@ -11,7 +11,7 @@ from PIL import ImageFont
 F = lambda s: ImageFont.truetype(FONTE, s)
 ROSA, AMARELO, ESCURO, BRANCO, VERDE = (255, 90, 122), (255, 210, 63), (30, 30, 46), (255, 255, 255), (37, 211, 102)
 VOZ = os.environ.get("VOZ", "pt-BR-FranciscaNeural")
-LINK = os.environ.get("LINK_CURTO", "moraesb02.github.io/achei-pra-casa-shorts/grupo")
+LINK = os.environ.get("LINK_CURTO", "acheiparacasagrupo.github.io/achei-pra-casa-shorts/grupo")
 PERFIL = Image.open(os.path.join(AQUI, "perfil.png")).convert("RGBA")
 CAPA = Image.open(os.path.join(AQUI, "capa.png")).convert("RGB")
 
