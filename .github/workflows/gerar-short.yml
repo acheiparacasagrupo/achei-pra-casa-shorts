@@ -34,9 +34,9 @@ jobs:
       - name: Escolher proximo produto da planilha
         id: prox
         env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-      run: python proximo.py
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python proximo.py
 
       - name: Gerar video
         if: steps.prox.outputs.pular == '0'
