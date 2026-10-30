@@ -1,5 +1,5 @@
 """
-buscar_produto.py v4 — scraping real do Mercado Livre (sem API)
+buscar_produto.py v5 — scraping real do Mercado Livre (sem API)
 - Gemini gera conceito/query do produto
 - Scraping do SITE ML (nao da API, que e bloqueada) para achar produto real
 - Extrai: link real do produto, imagens da galeria ML, video do vendedor
@@ -37,14 +37,23 @@ FALLBACK_PRODUTOS = {
 
 ML_HDRS = {
     "User-Agent": (
-        "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Mobile Safari/537.36"
+        "Chrome/120.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "pt-BR,pt;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.5",
     "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
+
+GEMINI_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,8 +62,19 @@ ML_HDRS = {
 
 def _gemini(prompt: str) -> str:
     client = genai.Client(api_key=GEMINI_API_KEY)
-    resp = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-    return resp.text.strip()
+    for model in GEMINI_MODELS:
+        try:
+            resp = client.models.generate_content(model=model, contents=prompt)
+            print(f"  Gemini OK ({model})")
+            return resp.text.strip()
+        except Exception as e:
+            msg = str(e)
+            if "404" in msg or "not available" in msg.lower() or "deprecated" in msg.lower():
+                print(f"  Modelo indisponivel: {model}")
+                continue
+            print(f"  Gemini erro ({model}): {e}")
+            raise
+    raise RuntimeError("Todos os modelos Gemini indisponiveis")
 
 
 def gerar_conceito(comodo: str) -> dict:
@@ -137,54 +157,80 @@ def _extrair_galeria(obj, depth=0):
     return []
 
 
+def _extrair_produto_url_do_html(html: str):
+    """Tenta varios padroes para extrair URL de produto ML da pagina de busca."""
+    # Padrao A: "permalink" com URL completa e MLB no path
+    perma = re.findall(
+        r'"permalink"\s*:\s*"(https://www\.mercadolivre\.com\.br/[^"]+)"', html
+    )
+    for p in perma:
+        url = p.split("?")[0].split("#")[0]
+        if "-MLB" in url or "/MLB" in url:
+            return url
+
+    # Padrao B: href direto com MLB no path
+    for h in re.findall(r'href=["\']{1}(https://www\.mercadolivre\.com\.br/[^"\'?#\s]+)["\']{1}', html):
+        if re.search(r'-MLB[-_]?\d+|/MLB\d+', h):
+            return h.split("?")[0].split("#")[0]
+
+    # Padrao C: "pdp_url" ou "item_url" no JSON
+    for pat in [
+        r'"pdp_url"\s*:\s*"(https://www\.mercadolivre\.com\.br/[^"]+)"',
+        r'"item_url"\s*:\s*"(https://www\.mercadolivre\.com\.br/[^"]+)"',
+    ]:
+        m = re.search(pat, html)
+        if m:
+            return m.group(1).split("?")[0]
+
+    return None
+
+
 def buscar_no_ml(query: str) -> dict:
     """
     Scrapa o SITE mercadolivre.com.br (nao a API) para achar produto real.
+    Tenta: /busca e /jm/search com diferentes variantes de URL.
     Retorna: link, imagens[], videos[], nome, preco
     """
     vazio = {"link": None, "imagens": [], "videos": [], "nome": "", "preco": 0.0}
+    q = requests.utils.quote(query, safe="")
+    print(f"  Scraping ML: {query}")
+
+    urls_busca = [
+        f"https://www.mercadolivre.com.br/busca?q={q}",
+        f"https://www.mercadolivre.com.br/jm/search?as_word={q}&site_id=MLB",
+        f"https://lista.mercadolivre.com.br/{q.replace('%20', '-')}",
+    ]
+
+    html = None
+    produto_url = None
+
+    for url_busca in urls_busca:
+        try:
+            r = requests.get(url_busca, headers=ML_HDRS, timeout=25, allow_redirects=True)
+            print(f"  GET {url_busca[:70]} -> HTTP {r.status_code} ({len(r.text)} chars)")
+            if r.status_code == 200 and len(r.text) > 5000:
+                html = r.text
+                produto_url = _extrair_produto_url_do_html(html)
+                if produto_url:
+                    break
+                else:
+                    print(f"  Nenhum link MLB encontrado nessa URL")
+        except Exception as e:
+            print(f"  Busca erro: {e}")
+            continue
+
+    if not produto_url:
+        print("  Nenhum produto encontrado na busca")
+        return vazio
+
+    print(f"  Produto: {produto_url[:90]}")
+    resultado = dict(vazio)
+    resultado["link"] = produto_url
 
     try:
-        # ── 1. Página de busca do ML ──────────────────────────────────────
-        q = requests.utils.quote(query, safe="")
-        print(f"  Scraping ML: {query}")
-        r = requests.get(
-            f"https://www.mercadolivre.com.br/jm/search?as_word={q}&site_id=MLB",
-            headers=ML_HDRS, timeout=25, allow_redirects=True
-        )
-        if r.status_code != 200:
-            print(f"  ML busca HTTP {r.status_code}")
-            return vazio
-
-        html = r.text
-        produto_url = None
-
-        # Padrao A: "permalink" no JSON da pagina de busca
-        perma = re.findall(
-            r'"permalink"\s*:\s*"(https://www\.mercadolivre\.com\.br/[^"]+)"', html
-        )
-        if perma:
-            produto_url = perma[0].split("?")[0]
-
-        # Padrao B: href com MLB- (produto individual)
-        if not produto_url:
-            for h in re.findall(r'href="(https://www\.mercadolivre\.com\.br/[^"?#]+)"', html):
-                if re.search(r'-MLB-\d+|/MLB\d+', h):
-                    produto_url = h.split("?")[0]
-                    break
-
-        if not produto_url:
-            print("  Nenhum produto encontrado na busca")
-            return vazio
-
-        print(f"  Produto: {produto_url[:90]}")
-        resultado = dict(vazio)
-        resultado["link"] = produto_url
-
-        # ── 2. Página do produto ──────────────────────────────────────────
         r2 = requests.get(produto_url, headers=ML_HDRS, timeout=25, allow_redirects=True)
+        print(f"  Produto page HTTP {r2.status_code} ({len(r2.text)} chars)")
         if r2.status_code != 200:
-            print(f"  Pagina produto HTTP {r2.status_code}")
             return resultado
 
         html2 = r2.text
@@ -231,6 +277,7 @@ def buscar_no_ml(query: str) -> dict:
                             iurl_hd = re.sub(r'-[A-Z]\.(jpg|jpeg|webp)$', r'-O.jpg', iurl)
                             resultado["imagens"].append(iurl_hd)
 
+                print(f"  __NEXT_DATA__ -> {len(resultado['imagens'])} img | {len(resultado['videos'])} vid")
             except Exception as e:
                 print(f"  NEXT_DATA parse: {e}")
 
@@ -273,8 +320,7 @@ def buscar_no_ml(query: str) -> dict:
         return resultado
 
     except Exception as e:
-        print(f"  ML scraping erro: {e}")
-        return vazio
+        print(f"  Produto page erro: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
