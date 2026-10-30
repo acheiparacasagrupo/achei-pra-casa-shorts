@@ -52,7 +52,7 @@ FALLBACK_PRODUTOS = {
 def _gemini(prompt: str) -> str:
     client = genai.Client(api_key=GEMINI_API_KEY)
     resp = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.8-flash",
         contents=prompt,
     )
     return resp.text.strip()
