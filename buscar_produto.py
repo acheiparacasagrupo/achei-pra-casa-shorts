@@ -10,7 +10,6 @@ Variaveis de ambiente necessarias:
 """
 import json, os, random, re, sys
 import requests
-from google import genai
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -20,7 +19,26 @@ PLANILHA_ID          = os.environ.get("PLANILHA_ID", "1DEXtunlKTCBKu3lmYYPLp8X0n
 
 COMODOS = ["cozinha", "banheiro", "limpeza", "decoracao", "organizacao"]
 
-# ââ Gemini ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Queries de fallback caso Gemini nao esteja disponivel
+QUERIES_FALLBACK = {
+    "cozinha":     ["organizador gaveta cozinha bambu", "suporte temperos geladeira", "escorredor talheres vertical"],
+    "banheiro":    ["organizador banheiro suspenso", "porta shampoo adesivo banheiro", "suporte papel higienico"],
+    "limpeza":     ["rodo magico giratório cabo", "mop spray limpeza rapida", "kit limpeza multiuso casa"],
+    "decoracao":   ["quadro decorativo minimalista sala", "vaso ceramica decorativo moderno", "luminaria led mesa"],
+    "organizacao": ["caixa organizadora multiuso", "organizador gaveta roupas", "divisor compartimento bolsa"],
+}
+
+# Descricoes de fallback por comodo
+DESCRICAO_FALLBACK = {
+    "cozinha":     "Produto pratico para organizar sua cozinha. Resolve o problema de espaco e deixa tudo no lugar certo.",
+    "banheiro":    "Solucao inteligente para banheiro. Maximiza o espaco e mantem tudo organizado sem perfurar paredes.",
+    "limpeza":     "Facilita a limpeza do dia a dia. Economiza tempo e esfoco com um resultado muito melhor.",
+    "decoracao":   "Transforma o ambiente com estilo. Decoracao moderna que combina com qualquer estilo de casa.",
+    "organizacao": "Organiza de uma vez por todas. Chega de perder tempo procurando as coisas em casa.",
+}
+
+
+# -- Gemini ------------------------------------------------------------------
 
 def _gemini(prompt: str) -> str:
     """Chama a API REST do Gemini com retry automatico."""
@@ -41,12 +59,14 @@ def _gemini(prompt: str) -> str:
                 print(f"  Gemini tentativa {attempt + 1} falhou: {e}. Retentando em 5s...")
                 time.sleep(5)
             else:
+                print(f"  Gemini indisponivel apos 3 tentativas: {e}")
                 raise
 
 
 def gerar_queries(comodo: str) -> list:
-    """Pede ao Gemini 3 queries de busca para produtos virais no comodo dado."""
-    r = _gemini(f"""Voce e especialista em produtos virais para casa no Brasil.
+    """Pede ao Gemini 3 queries. Usa fallback se Gemini estiver indisponivel."""
+    try:
+        r = _gemini(f"""Voce e especialista em produtos virais para casa no Brasil.
 
 Gere 3 queries de busca diferentes (em portugues, max 5 palavras cada) para encontrar
 no Mercado Livre produtos VIRAIS para o comodo: {comodo}
@@ -63,13 +83,20 @@ Exemplo:
 organizador talheres bambu
 suporte temperos geladeira
 dispenser sabonete automatico""")
-
-    return [q.strip() for q in r.strip().splitlines() if q.strip()][:3]
-
+        queries = [q.strip() for q in r.strip().splitlines() if q.strip()][:3]
+        if queries:
+            return queries
+    except Exception as e:
+        print(f"  Gemini indisponivel para queries. Usando fallback: {e}")
+    # Fallback
+    fallback = QUERIES_FALLBACK.get(comodo, ["produto viral casa", "gadget utilidade domestica", "achadinho tiktok"])
+    print(f"  Usando queries de fallback para '{comodo}': {fallback}")
+    return fallback
 
 def gerar_detalhes(nome: str, preco: float, comodo: str) -> str:
-    """Gemini gera descricao atrativa do produto (max 180 chars)."""
-    r = _gemini(f"""Produto do Mercado Livre:
+    """Gemini gera descricao atrativa. Usa fallback se indisponivel."""
+    try:
+        r = _gemini(f"""Produto do Mercado Livre:
 Nome: {nome}
 Preco: R${preco:.2f}
 Comodo: {comodo}
@@ -80,10 +107,17 @@ Escreva uma descricao curta (MAX 180 caracteres) em portugues que destaque:
 - Linguagem natural, sem exageros
 
 Retorne APENAS a descricao, sem aspas, sem emojis.""")
-    return r[:200]
+        if r.strip():
+            return r[:200]
+    except Exception as e:
+        print(f"  Gemini indisponivel para detalhes. Usando fallback: {e}")
+    # Fallback
+    desc = DESCRICAO_FALLBACK.get(comodo, f"Produto pratico para {comodo}. Resolve problemas do dia a dia.")
+    print(f"  Usando descricao de fallback para '{comodo}'")
+    return desc[:200]
 
 
-# ââ Mercado Livre API publica âââââââââââââââââââââââââââââââââââââââââââââââââ
+# -- Mercado Livre API publica -----------------------------------------------
 
 def buscar_ml(query: str, comodo: str) -> dict:
     """Busca na API publica do ML e retorna o melhor produto encontrado."""
@@ -104,14 +138,12 @@ def buscar_ml(query: str, comodo: str) -> dict:
         print(f"  ML API erro: {e}")
         return None
 
-    # filtra por preco e thumbnail valido
     filtrados = [
         p for p in resultados
         if 15 <= p.get("price", 0) <= 120
         and p.get("thumbnail", "").startswith("http")
         and p.get("sold_quantity", 0) >= 50
     ]
-    # fallback sem filtro de vendas minimas
     if not filtrados:
         filtrados = [
             p for p in resultados
@@ -124,14 +156,12 @@ def buscar_ml(query: str, comodo: str) -> dict:
     melhor = filtrados[0]
     produto_id = melhor["id"]
 
-    # busca imagem em maior resolucao
     try:
         det = requests.get(
             f"https://api.mercadolibre.com/items/{produto_id}",
             timeout=10
         ).json()
         imagem = det.get("pictures", [{}])[0].get("url", melhor["thumbnail"])
-        # mlstatic: sufixo -O.jpg = full size, -I.jpg = pequena
         imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", imagem)
     except Exception:
         imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", melhor.get("thumbnail", ""))
@@ -147,7 +177,7 @@ def buscar_ml(query: str, comodo: str) -> dict:
     }
 
 
-# ââ Planilha ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# -- Planilha ----------------------------------------------------------------
 
 def inserir_planilha(produto: dict):
     """Insere o produto como nova linha 'pendente' na planilha."""
@@ -167,7 +197,7 @@ def inserir_planilha(produto: dict):
         produto["link_afiliado"],
         produto["imagens"],
         produto.get("detalhes", ""),
-        "",  # titulo  (preenchido pelo run.py via Gemini)
+        "",  # titulo
         "",  # video_id
         "",  # data_postagem
         "",  # videos
@@ -176,7 +206,7 @@ def inserir_planilha(produto: dict):
     print(f"Produto inserido na planilha: {produto['nome']} ({produto['comodo']}) R${produto['preco']:.2f}")
 
 
-# ââ Main ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# -- Main --------------------------------------------------------------------
 
 def main():
     comodo = random.choice(COMODOS)
@@ -187,7 +217,7 @@ def main():
 
     for _ in range(5):
         queries = gerar_queries(comodo)
-        print(f"  Queries Gemini: {queries}")
+        print(f"  Queries: {queries}")
 
         for query in queries:
             print(f"  Buscando ML: '{query}'")
@@ -198,7 +228,6 @@ def main():
         if produto:
             break
 
-        # tenta outro comodo se nao achou
         restantes = [c for c in COMODOS if c not in comodos_tentados]
         if not restantes:
             break
