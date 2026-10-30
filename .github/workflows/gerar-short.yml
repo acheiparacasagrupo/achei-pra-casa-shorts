@@ -31,6 +31,13 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
           pip install -q edge-tts==7.3.1 pillow requests gspread google-auth google-genai
 
+      - name: Pesquisa de produtos e preenchimento de planilha
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python buscar_produto.py
+
       - name: Escolher proximo produto da planilha
         id: prox
         env:
