@@ -35,9 +35,9 @@ DESCRICAO_FALLBACK = {
     "organizacao": "Organiza de uma vez por todas. Chega de perder tempo procurando as coisas em casa.",
 }
 
-# -- Gemini (timeout curto: falha rapido e usa fallback) ---------------------
 
 def _gemini(prompt):
+    """Chama Gemini com timeout curto para falhar rapido e usar fallback."""
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     r = requests.post(url, params={"key": GEMINI_API_KEY},
         json={"contents": [{"parts": [{"text": prompt}]}],
@@ -48,8 +48,9 @@ def _gemini(prompt):
 
 
 def gerar_queries(comodo):
+    """Pede ao Gemini 3 queries. Usa fallback imediato se falhar."""
     try:
-        r = _gemini("Gere 3 queries de busca (portugues, max 5 palavras) para produtos virais de " + comodo + " no Mercado Livre. Retorne APENAS as 3 queries, uma por linha.")
+        r = _gemini("Gere 3 queries de busca em portugues (max 5 palavras cada) para produtos virais de " + comodo + " no Mercado Livre. Retorne APENAS as 3 queries, uma por linha.")
         queries = [q.strip() for q in r.strip().splitlines() if q.strip()][:3]
         if queries:
             print("  Queries Gemini: " + str(queries))
@@ -62,19 +63,18 @@ def gerar_queries(comodo):
 
 
 def gerar_detalhes(nome, preco, comodo):
+    """Gemini gera descricao. Usa fallback imediato se falhar."""
     try:
-        r = _gemini("Produto: " + nome + " R$" + str(round(preco,2)) + " comodo: " + comodo + ". Descricao curta (max 180 chars) em portugues, sem emojis.")
+        r = _gemini("Produto: " + nome + " R$" + str(round(preco,2)) + " comodo: " + comodo + ". Descricao curta (max 180 chars) sem emojis.")
         if r.strip():
             return r[:200]
     except Exception as e:
-        print("  Gemini falhou para detalhes, usando fallback: " + str(e))
-    desc = DESCRICAO_FALLBACK.get(comodo, "Produto pratico para " + comodo + ". Resolve problemas do dia a dia.")
-    return desc[:200]
+        print("  Gemini falhou para detalhes: " + str(e))
+    return DESCRICAO_FALLBACK.get(comodo, "Produto pratico para " + comodo + ".")[:200]
 
-
-# -- Mercado Livre API -------------------------------------------------------
 
 def buscar_ml(query, comodo):
+    """Busca na API publica do ML e retorna o melhor produto."""
     try:
         resp = requests.get("https://api.mercadolibre.com/sites/MLB/search",
             params={"q": query, "sort": "sold_quantity_desc", "limit": 20, "condition": "new"},
@@ -85,13 +85,10 @@ def buscar_ml(query, comodo):
         print("  ML API erro: " + str(e))
         return None
 
-    filtrados = [p for p in resultados
-        if 15 <= p.get("price", 0) <= 120
-        and p.get("thumbnail", "").startswith("http")
-        and p.get("sold_quantity", 0) >= 50]
+    filtrados = [p for p in resultados if 15 <= p.get("price", 0) <= 120
+        and p.get("thumbnail", "").startswith("http") and p.get("sold_quantity", 0) >= 50]
     if not filtrados:
-        filtrados = [p for p in resultados
-            if 15 <= p.get("price", 0) <= 120
+        filtrados = [p for p in resultados if 15 <= p.get("price", 0) <= 120
             and p.get("thumbnail", "").startswith("http")]
     if not filtrados:
         return None
@@ -104,19 +101,13 @@ def buscar_ml(query, comodo):
     except Exception:
         imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", melhor.get("thumbnail", ""))
 
-    print("  Encontrado: " + melhor["title"][:60] + " | R$" + str(melhor["price"]) + " | " + str(melhor.get("sold_quantity",0)) + " vendas")
-    return {
-        "nome": melhor["title"][:80],
-        "comodo": comodo,
-        "preco": melhor["price"],
-        "link_afiliado": melhor["permalink"],
-        "imagens": imagem,
-    }
+    print("  Encontrado: " + melhor["title"][:60] + " | R$" + str(melhor["price"]) + " | " + str(melhor.get("sold_quantity", 0)) + " vendas")
+    return {"nome": melhor["title"][:80], "comodo": comodo, "preco": melhor["price"],
+            "link_afiliado": melhor["permalink"], "imagens": imagem}
 
-
-# -- Planilha ----------------------------------------------------------------
 
 def inserir_planilha(produto):
+    """Insere o produto como nova linha pendente na planilha."""
     creds = Credentials.from_service_account_info(
         json.loads(GOOGLE_CREDENTIALS_JSON),
         scopes=["https://www.googleapis.com/auth/spreadsheets"])
@@ -129,14 +120,11 @@ def inserir_planilha(produto):
     print("Produto inserido: " + produto["nome"] + " R$" + str(produto["preco"]))
 
 
-# -- Main --------------------------------------------------------------------
-
 def main():
     comodo = random.choice(COMODOS)
     print("Buscando produto viral para: " + comodo)
     produto = None
     comodos_tentados = [comodo]
-
     for _ in range(5):
         queries = gerar_queries(comodo)
         for query in queries:
@@ -153,10 +141,8 @@ def main():
         comodo = random.choice(restantes)
         comodos_tentados.append(comodo)
         print("  Tentando comodo: " + comodo)
-
     if not produto:
         sys.exit("ERRO: Nao foi possivel encontrar produto no ML.")
-
     produto["detalhes"] = gerar_detalhes(produto["nome"], produto["preco"], comodo)
     inserir_planilha(produto)
 
