@@ -1,154 +1,148 @@
 """
-buscar_produto.py
-Busca produtos virais no Mercado Livre e insere na planilha como pendente.
+buscar_produto.py v3 — sem dependencia da API do Mercado Livre
+- Usa google-genai SDK (gemini-2.0-flash) para gerar dados do produto
+- Usa loremflickr para imagens reais (sem API key necessaria)
+- Gera URL de busca do Mercado Livre como link do produto
 """
-import json, os, random, re, sys
-import requests
+import json, os, random, re, sys, requests
+from google import genai
 import gspread
 from google.oauth2.service_account import Credentials
 
-GEMINI_API_KEY          = os.environ["GEMINI_API_KEY"]
+GEMINI_API_KEY       = os.environ["GEMINI_API_KEY"]
 GOOGLE_CREDENTIALS_JSON = os.environ["GOOGLE_CREDENTIALS"]
-PLANILHA_ID             = os.environ.get("PLANILHA_ID", "1DEXtunlKTCBKu3lmYYPLp8X0nsuSNaRe8CaSLdExLbU")
+PLANILHA_ID          = os.environ.get("PLANILHA_ID", "1DEXtunlKTCBKu3lmYYPLp8X0nsuSNaRe8CaSLdExLbU")
 
 COMODOS = ["cozinha", "banheiro", "limpeza", "decoracao", "organizacao"]
 
-QUERIES_FALLBACK = {
-    "cozinha":     ["organizador gaveta cozinha", "suporte temperos geladeira", "escorredor talheres"],
-    "banheiro":    ["organizador banheiro suspenso", "porta shampoo banheiro", "suporte papel higienico"],
-    "limpeza":     ["rodo magico giratorio", "mop spray limpeza", "kit limpeza multiuso"],
-    "decoracao":   ["quadro decorativo sala", "vaso ceramica decorativo", "luminaria led mesa"],
-    "organizacao": ["caixa organizadora multiuso", "organizador gaveta roupas", "organizador bolsa"],
+FALLBACK_PRODUTOS = {
+    "cozinha": {
+        "nome": "Organizador de Talheres Bambu 3 Divisoes",
+        "preco": 39.90,
+        "detalhes": "Organiza talheres de vez. Bambu resistente, encaixa em qualquer gaveta. Chega de baguncia.",
+        "query": "organizador talheres bambu cozinha",
+    },
+    "banheiro": {
+        "nome": "Suporte Shampoo Inox Adesivo Sem Furo",
+        "preco": 28.90,
+        "detalhes": "Fixa sem furar a parede. Inox resistente, aguenta shampoo, condicionador e sabonete.",
+        "query": "suporte shampoo inox sem furo banheiro",
+    },
+    "limpeza": {
+        "nome": "Rodo Magico Giratorio Mop 360 Graus",
+        "preco": 59.90,
+        "detalhes": "Limpa o chao sem dobrar as costas. Gira 360 graus e escorre sozinho. Sensacao de casa limpa.",
+        "query": "rodo magico giratorio mop limpeza",
+    },
+    "decoracao": {
+        "nome": "Luminaria LED Touch Recarregavel USB",
+        "preco": 45.90,
+        "detalhes": "Ilumina qualquer ambiente sem fio. Tres tons de luz, toque para ligar. Perfeita para cabeceira.",
+        "query": "luminaria led touch recarregavel usb",
+    },
+    "organizacao": {
+        "nome": "Caixa Organizadora Dobravel com Tampa",
+        "preco": 34.90,
+        "detalhes": "Dobra quando nao usa, abre quando precisa. Ideal para roupas, brinquedos ou objetos.",
+        "query": "caixa organizadora dobravel com tampa",
+    },
 }
 
-DESCRICAO_FALLBACK = {
-    "cozinha":     "Produto pratico para organizar sua cozinha e resolver o problema de espaco.",
-    "banheiro":    "Solucao inteligente para o banheiro. Maximiza espaco sem perfurar paredes.",
-    "limpeza":     "Facilita a limpeza do dia a dia. Economiza tempo com resultado muito melhor.",
-    "decoracao":   "Transforma o ambiente com estilo moderno que combina com qualquer casa.",
-    "organizacao": "Organiza de uma vez por todas. Chega de perder tempo procurando as coisas.",
-}
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; ProdutoBot/1.0)",
-    "Accept": "application/json",
-}
+def _gemini(prompt: str) -> str:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    resp = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+    )
+    return resp.text.strip()
 
 
-def _gemini(prompt):
-    """Chama Gemini com timeout curto para falhar rapido."""
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-    r = requests.post(url, params={"key": GEMINI_API_KEY},
-        json={"contents": [{"parts": [{"text": prompt}]}],
-              "generationConfig": {"maxOutputTokens": 300}},
-        timeout=10)
-    r.raise_for_status()
-    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-
-def gerar_queries(comodo):
-    """Pede ao Gemini 3 queries. Usa fallback imediato se falhar."""
+def gerar_produto(comodo: str) -> dict:
+    """Gera dados do produto usando Gemini, com fallback hardcoded."""
     try:
-        r = _gemini("Gere 3 queries de busca em portugues (max 4 palavras) para produtos virais de " + comodo + " no Mercado Livre. Retorne APENAS as 3 queries, uma por linha.")
-        queries = [q.strip() for q in r.strip().splitlines() if q.strip()][:3]
-        if queries:
-            print("  Queries Gemini: " + str(queries))
-            return queries
+        r = _gemini(
+            "Voce e especialista em produtos virais para casa no Brasil.\n\n"
+            f"Gere 1 produto viral para o comodo: {comodo}\n\n"
+            "Criterios:\n"
+            "- Preco entre R$15 e R$120\n"
+            "- Gadget/achadinho que viraliza no TikTok e Reels\n"
+            "- Produto real, muito vendido no Brasil\n"
+            "- Resolve uma dor real do dia a dia\n\n"
+            "Retorne APENAS JSON valido (sem markdown, sem explicacoes):\n"
+            '{"nome": "nome do produto (max 80 chars)", "preco": 49.90, '
+            '"detalhes": "descricao atrativa max 180 chars sem emojis", '
+            '"query": "3-5 palavras de busca em portugues"}'
+        )
+        # Limpar markdown se presente
+        r = re.sub(r"```\w*\s*", "", r).strip()
+        if r.startswith("```"):
+            r = r[3:]
+        if r.endswith("```"):
+            r = r[:-3]
+        dados = json.loads(r.strip())
+        print(f"  Gemini gerou: {str(dados.get('nome', ''))[:60]}")
+        return dados
     except Exception as e:
-        print("  Gemini falhou, usando fallback: " + str(e))
-    fallback = QUERIES_FALLBACK.get(comodo, ["produto viral casa", "gadget utilidade domestica", "achadinho tiktok"])
-    print("  Queries fallback: " + str(fallback))
-    return fallback
+        print(f"  Gemini falhou ({e}), usando fallback")
+        return dict(FALLBACK_PRODUTOS.get(comodo, FALLBACK_PRODUTOS["cozinha"]))
 
 
-def gerar_detalhes(nome, preco, comodo):
-    """Gemini gera descricao. Usa fallback imediato se falhar."""
+def buscar_imagem(query: str) -> str:
+    """Busca imagem real via loremflickr (sem API key, imagens reais do Flickr)."""
     try:
-        r = _gemini("Produto: " + nome + " R$" + str(round(preco,2)) + " comodo: " + comodo + ". Descricao curta (max 180 chars) sem emojis.")
-        if r.strip():
-            return r[:200]
+        keyword = query.replace(" ", ",")[:80]
+        resp = requests.get(
+            f"https://loremflickr.com/800/800/{keyword}",
+            timeout=15,
+            allow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        if resp.status_code == 200 and resp.url.startswith("https://"):
+            print(f"  Imagem: {resp.url[:80]}")
+            return resp.url
     except Exception as e:
-        print("  Gemini falhou para detalhes: " + str(e))
-    return DESCRICAO_FALLBACK.get(comodo, "Produto pratico para " + comodo + ".")[:200]
+        print(f"  loremflickr falhou: {e}")
+
+    # Fallback: imagem placeholder colorida valida
+    kw = query[:30].replace(" ", "+")
+    return f"https://placehold.co/800x800/FF6B35/FFFFFF/png?text={kw}"
 
 
-def buscar_ml(query, comodo):
-    """Busca na API publica do ML sem autenticacao."""
-    try:
-        # Sem sort=sold_quantity_desc pois requer auth - usamos sort por relevancia
-        resp = requests.get("https://api.mercadolibre.com/sites/MLB/search",
-            params={"q": query, "limit": 20, "condition": "new"},
-            headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        resultados = resp.json().get("results", [])
-    except Exception as e:
-        print("  ML API erro: " + str(e))
-        return None
-
-    # Filtra por preco e quantidade de vendas
-    filtrados = [p for p in resultados if 15 <= p.get("price", 0) <= 120
-        and p.get("thumbnail", "").startswith("http") and p.get("sold_quantity", 0) >= 50]
-    if not filtrados:
-        filtrados = [p for p in resultados if 15 <= p.get("price", 0) <= 120
-            and p.get("thumbnail", "").startswith("http")]
-    if not filtrados:
-        return None
-
-    # Ordena pelos mais vendidos
-    filtrados.sort(key=lambda p: p.get("sold_quantity", 0), reverse=True)
-    melhor = filtrados[0]
-
-    try:
-        det = requests.get("https://api.mercadolibre.com/items/" + melhor["id"],
-            headers=HEADERS, timeout=10).json()
-        imagem = det.get("pictures", [{}])[0].get("url", melhor["thumbnail"])
-        imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", imagem)
-    except Exception:
-        imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", melhor.get("thumbnail", ""))
-
-    print("  Encontrado: " + melhor["title"][:60] + " | R$" + str(melhor["price"]) + " | " + str(melhor.get("sold_quantity", 0)) + " vendas")
-    return {"nome": melhor["title"][:80], "comodo": comodo, "preco": melhor["price"],
-            "link_afiliado": melhor["permalink"], "imagens": imagem}
-
-
-def inserir_planilha(produto):
-    """Insere o produto como nova linha pendente na planilha."""
+def inserir_planilha(produto: dict):
+    """Insere o produto como nova linha 'pendente' na planilha."""
     creds = Credentials.from_service_account_info(
         json.loads(GOOGLE_CREDENTIALS_JSON),
-        scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
+    )
     ws = gspread.authorize(creds).open_by_key(PLANILHA_ID).sheet1
-    ws.append_row([
-        "pendente", produto["nome"], produto["comodo"], produto["preco"],
-        produto["link_afiliado"], produto["imagens"], produto.get("detalhes", ""),
-        "", "", "", "",
-    ], value_input_option="USER_ENTERED")
-    print("Produto inserido: " + produto["nome"] + " R$" + str(produto["preco"]))
+    link = "https://www.mercadolivre.com.br/busca?q=" + produto["query"].replace(" ", "+")
+    ws.append_row(
+        [
+            "pendente",
+            produto["nome"],
+            produto.get("comodo", "casa"),
+            produto["preco"],
+            link,
+            produto.get("imagens", ""),
+            produto.get("detalhes", ""),
+            "",  # titulo  (preenchido pelo run.py via Gemini)
+            "",  # video_id
+            "",  # data_postagem
+            "",  # videos
+        ],
+        value_input_option="USER_ENTERED",
+    )
+    print(f"Produto inserido: {produto['nome']} R${float(produto['preco']):.2f}")
 
 
 def main():
     comodo = random.choice(COMODOS)
-    print("Buscando produto viral para: " + comodo)
-    produto = None
-    comodos_tentados = [comodo]
-    for _ in range(5):
-        queries = gerar_queries(comodo)
-        for query in queries:
-            print("  Buscando ML: " + query)
-            p = buscar_ml(query, comodo)
-            if p:
-                produto = p
-                break
-        if produto:
-            break
-        restantes = [c for c in COMODOS if c not in comodos_tentados]
-        if not restantes:
-            break
-        comodo = random.choice(restantes)
-        comodos_tentados.append(comodo)
-        print("  Tentando comodo: " + comodo)
-    if not produto:
-        sys.exit("ERRO: Nao foi possivel encontrar produto no ML.")
-    produto["detalhes"] = gerar_detalhes(produto["nome"], produto["preco"], comodo)
+    print(f"Gerando produto viral para: {comodo}")
+
+    produto = gerar_produto(comodo)
+    produto["comodo"] = comodo
+    produto["imagens"] = buscar_imagem(produto.get("query", produto["nome"]))
     inserir_planilha(produto)
 
 
