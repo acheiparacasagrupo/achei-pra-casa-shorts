@@ -24,7 +24,7 @@ COMODOS = ["cozinha", "banheiro", "limpeza", "decoracao", "organizacao"]
 
 def _gemini(prompt: str) -> str:
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-1.5-flash")
     return model.generate_content(prompt).text.strip()
 
 
