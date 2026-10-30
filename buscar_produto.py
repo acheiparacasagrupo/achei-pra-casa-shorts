@@ -1,7 +1,7 @@
 """
 buscar_produto.py
 Usa Gemini para gerar queries de busca e chama a API publica do Mercado Livre
-para encontrar produtos virais para casa. Insere na planilha como 'pendente'.
+para encontrar produtos virais para casa. Insere na planilha como pendente.
 
 Variaveis de ambiente necessarias:
   GEMINI_API_KEY       - chave da API Gemini
@@ -19,7 +19,6 @@ PLANILHA_ID             = os.environ.get("PLANILHA_ID", "1DEXtunlKTCBKu3lmYYPLp8
 
 COMODOS = ["cozinha", "banheiro", "limpeza", "decoracao", "organizacao"]
 
-# Queries de fallback caso Gemini nao esteja disponivel
 QUERIES_FALLBACK = {
     "cozinha":     ["organizador gaveta cozinha bambu", "suporte temperos geladeira", "escorredor talheres vertical"],
     "banheiro":    ["organizador banheiro suspenso", "porta shampoo adesivo banheiro", "suporte papel higienico"],
@@ -28,7 +27,6 @@ QUERIES_FALLBACK = {
     "organizacao": ["caixa organizadora multiuso", "organizador gaveta roupas", "divisor compartimento bolsa"],
 }
 
-# Descricoes de fallback por comodo
 DESCRICAO_FALLBACK = {
     "cozinha":     "Produto pratico para organizar sua cozinha. Resolve o problema de espaco e deixa tudo no lugar certo.",
     "banheiro":    "Solucao inteligente para banheiro. Maximiza o espaco e mantem tudo organizado sem perfurar paredes.",
@@ -37,174 +35,124 @@ DESCRICAO_FALLBACK = {
     "organizacao": "Organiza de uma vez por todas. Chega de perder tempo procurando as coisas em casa.",
 }
 
-# ── Gemini ────────────────────────────────────────────────────────────────────
+# -- Gemini (timeout curto: falha rapido e usa fallback) ---------------------
 
-def _gemini(prompt: str) -> str:
-    """Chama a API REST do Gemini. Timeout curto para falhar rapido e usar fallback."""
+def _gemini(prompt):
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-    params = {"key": GEMINI_API_KEY}
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 300},
-    }
-    r = requests.post(url, params=params, json=body, timeout=10)
+    r = requests.post(url, params={"key": GEMINI_API_KEY},
+        json={"contents": [{"parts": [{"text": prompt}]}],
+              "generationConfig": {"maxOutputTokens": 300}},
+        timeout=10)
     r.raise_for_status()
     return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
-def gerar_queries(comodo: str) -> list:
-    """Pede ao Gemini 3 queries. Usa fallback imediato se Gemini falhar."""
+def gerar_queries(comodo):
     try:
-        r = _gemini(
-            "Gere 3 queries de busca (portugues, max 5 palavras cada) para produtos virais "
-            "de " + comodo + " no Mercado Livre Brasil. "
-            "Retorne APENAS as 3 queries, uma por linha, sem numeracao."
-        )
+        r = _gemini("Gere 3 queries de busca (portugues, max 5 palavras) para produtos virais de " + comodo + " no Mercado Livre. Retorne APENAS as 3 queries, uma por linha.")
         queries = [q.strip() for q in r.strip().splitlines() if q.strip()][:3]
         if queries:
             print("  Queries Gemini: " + str(queries))
             return queries
     except Exception as e:
-        print("  Gemini indisponivel para queries, usando fallback: " + str(e))
+        print("  Gemini falhou, usando fallback: " + str(e))
     fallback = QUERIES_FALLBACK.get(comodo, ["produto viral casa", "gadget utilidade domestica", "achadinho tiktok"])
     print("  Queries fallback: " + str(fallback))
     return fallback
 
 
-def gerar_detalhes(nome: str, preco: float, comodo: str) -> str:
-    """Gemini gera descricao atrativa. Usa fallback imediato se falhar."""
+def gerar_detalhes(nome, preco, comodo):
     try:
-        r = _gemini(
-            "Produto: " + nome + " R$" + str(round(preco, 2)) + " - comodo: " + comodo + ". "
-            "Escreva descricao curta (max 180 chars) em portugues destacando o diferencial. "
-            "Retorne APENAS a descricao, sem aspas, sem emojis."
-        )
+        r = _gemini("Produto: " + nome + " R$" + str(round(preco,2)) + " comodo: " + comodo + ". Descricao curta (max 180 chars) em portugues, sem emojis.")
         if r.strip():
             return r[:200]
     except Exception as e:
-        print("  Gemini indisponivel para detalhes, usando fallback: " + str(e))
+        print("  Gemini falhou para detalhes, usando fallback: " + str(e))
     desc = DESCRICAO_FALLBACK.get(comodo, "Produto pratico para " + comodo + ". Resolve problemas do dia a dia.")
-    print("  Detalhes fallback para: " + comodo)
     return desc[:200]
 
 
-# ── Mercado Livre API publica ─────────────────────────────────────────────────
+# -- Mercado Livre API -------------------------------------------------------
 
-def buscar_ml(query: str, comodo: str) -> dict:
-    """Busca na API publica do ML e retorna o melhor produto encontrado."""
+def buscar_ml(query, comodo):
     try:
-        params = {
-            "q": query,
-            "sort": "sold_quantity_desc",
-            "limit": 20,
-            "condition": "new",
-        }
-        resp = requests.get(
-            "https://api.mercadolibre.com/sites/MLB/search",
-            params=params, timeout=15
-        )
+        resp = requests.get("https://api.mercadolibre.com/sites/MLB/search",
+            params={"q": query, "sort": "sold_quantity_desc", "limit": 20, "condition": "new"},
+            timeout=15)
         resp.raise_for_status()
         resultados = resp.json().get("results", [])
     except Exception as e:
         print("  ML API erro: " + str(e))
         return None
 
-    filtrados = [
-        p for p in resultados
+    filtrados = [p for p in resultados
         if 15 <= p.get("price", 0) <= 120
         and p.get("thumbnail", "").startswith("http")
-        and p.get("sold_quantity", 0) >= 50
-    ]
+        and p.get("sold_quantity", 0) >= 50]
     if not filtrados:
-        filtrados = [
-            p for p in resultados
+        filtrados = [p for p in resultados
             if 15 <= p.get("price", 0) <= 120
-            and p.get("thumbnail", "").startswith("http")
-        ]
+            and p.get("thumbnail", "").startswith("http")]
     if not filtrados:
         return None
 
     melhor = filtrados[0]
-    produto_id = melhor["id"]
-
     try:
-        det = requests.get(
-            "https://api.mercadolibre.com/items/" + produto_id,
-            timeout=10
-        ).json()
+        det = requests.get("https://api.mercadolibre.com/items/" + melhor["id"], timeout=10).json()
         imagem = det.get("pictures", [{}])[0].get("url", melhor["thumbnail"])
         imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", imagem)
     except Exception:
         imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", melhor.get("thumbnail", ""))
 
-    print("  Encontrado: " + melhor["title"][:60] + " | R$" + str(melhor["price"]) + " | " + str(melhor.get("sold_quantity", 0)) + " vendas")
-
+    print("  Encontrado: " + melhor["title"][:60] + " | R$" + str(melhor["price"]) + " | " + str(melhor.get("sold_quantity",0)) + " vendas")
     return {
-        "nome":         melhor["title"][:80],
-        "comodo":       comodo,
-        "preco":        melhor["price"],
+        "nome": melhor["title"][:80],
+        "comodo": comodo,
+        "preco": melhor["price"],
         "link_afiliado": melhor["permalink"],
-        "imagens":      imagem,
+        "imagens": imagem,
     }
 
 
-# ── Planilha ──────────────────────────────────────────────────────────────────
+# -- Planilha ----------------------------------------------------------------
 
-def inserir_planilha(produto: dict):
-    """Insere o produto como nova linha 'pendente' na planilha."""
-    creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+def inserir_planilha(produto):
     creds = Credentials.from_service_account_info(
-        creds_dict,
-        scopes=["https://www.googleapis.com/auth/spreadsheets"],
-    )
-    gc = gspread.authorize(creds)
-    ws = gc.open_by_key(PLANILHA_ID).sheet1
-
-    nova_linha = [
-        "pendente",
-        produto["nome"],
-        produto["comodo"],
-        produto["preco"],
-        produto["link_afiliado"],
-        produto["imagens"],
-        produto.get("detalhes", ""),
-        "",  # titulo
-        "",  # video_id
-        "",  # data_postagem
-        "",  # videos
-    ]
-    ws.append_row(nova_linha, value_input_option="USER_ENTERED")
-    print("Produto inserido: " + produto["nome"] + " (" + produto["comodo"] + ") R$" + str(produto["preco"]))
+        json.loads(GOOGLE_CREDENTIALS_JSON),
+        scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    ws = gspread.authorize(creds).open_by_key(PLANILHA_ID).sheet1
+    ws.append_row([
+        "pendente", produto["nome"], produto["comodo"], produto["preco"],
+        produto["link_afiliado"], produto["imagens"], produto.get("detalhes", ""),
+        "", "", "", "",
+    ], value_input_option="USER_ENTERED")
+    print("Produto inserido: " + produto["nome"] + " R$" + str(produto["preco"]))
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main --------------------------------------------------------------------
 
 def main():
     comodo = random.choice(COMODOS)
     print("Buscando produto viral para: " + comodo)
-
     produto = None
     comodos_tentados = [comodo]
 
     for _ in range(5):
         queries = gerar_queries(comodo)
-        print("  Queries: " + str(queries))
-
         for query in queries:
-            print("  Buscando ML: '" + query + "'")
+            print("  Buscando ML: " + query)
             p = buscar_ml(query, comodo)
             if p:
                 produto = p
                 break
         if produto:
             break
-
         restantes = [c for c in COMODOS if c not in comodos_tentados]
         if not restantes:
             break
         comodo = random.choice(restantes)
         comodos_tentados.append(comodo)
-        print("  Sem resultado. Tentando comodo: " + comodo)
+        print("  Tentando comodo: " + comodo)
 
     if not produto:
         sys.exit("ERRO: Nao foi possivel encontrar produto no ML.")
