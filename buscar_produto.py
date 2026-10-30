@@ -10,7 +10,7 @@ Variaveis de ambiente necessarias:
 """
 import json, os, random, re, sys
 import requests
-import google.generativeai as genai
+from google import genai
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -23,9 +23,9 @@ COMODOS = ["cozinha", "banheiro", "limpeza", "decoracao", "organizacao"]
 # ââ Gemini ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def _gemini(prompt: str) -> str:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    return model.generate_content(prompt).text.strip()
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    resp = client.models.generate_content(model="gemini-2.0-flash-lite", contents=prompt)
+    return resp.text.strip()
 
 
 def gerar_queries(comodo: str) -> list:
