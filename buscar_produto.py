@@ -1,12 +1,6 @@
 """
 buscar_produto.py
-Usa Gemini para gerar queries de busca e chama a API publica do Mercado Livre
-para encontrar produtos virais para casa. Insere na planilha como pendente.
-
-Variaveis de ambiente necessarias:
-  GEMINI_API_KEY       - chave da API Gemini
-  GOOGLE_CREDENTIALS   - JSON de service account com acesso a planilha (editor)
-  PLANILHA_ID          - ID da planilha (opcional, usa padrao se omitido)
+Busca produtos virais no Mercado Livre e insere na planilha como pendente.
 """
 import json, os, random, re, sys
 import requests
@@ -20,25 +14,30 @@ PLANILHA_ID             = os.environ.get("PLANILHA_ID", "1DEXtunlKTCBKu3lmYYPLp8
 COMODOS = ["cozinha", "banheiro", "limpeza", "decoracao", "organizacao"]
 
 QUERIES_FALLBACK = {
-    "cozinha":     ["organizador gaveta cozinha bambu", "suporte temperos geladeira", "escorredor talheres vertical"],
-    "banheiro":    ["organizador banheiro suspenso", "porta shampoo adesivo banheiro", "suporte papel higienico"],
-    "limpeza":     ["rodo magico giratorio cabo", "mop spray limpeza rapida", "kit limpeza multiuso casa"],
-    "decoracao":   ["quadro decorativo minimalista sala", "vaso ceramica decorativo moderno", "luminaria led mesa"],
-    "organizacao": ["caixa organizadora multiuso", "organizador gaveta roupas", "divisor compartimento bolsa"],
+    "cozinha":     ["organizador gaveta cozinha", "suporte temperos geladeira", "escorredor talheres"],
+    "banheiro":    ["organizador banheiro suspenso", "porta shampoo banheiro", "suporte papel higienico"],
+    "limpeza":     ["rodo magico giratorio", "mop spray limpeza", "kit limpeza multiuso"],
+    "decoracao":   ["quadro decorativo sala", "vaso ceramica decorativo", "luminaria led mesa"],
+    "organizacao": ["caixa organizadora multiuso", "organizador gaveta roupas", "organizador bolsa"],
 }
 
 DESCRICAO_FALLBACK = {
-    "cozinha":     "Produto pratico para organizar sua cozinha. Resolve o problema de espaco e deixa tudo no lugar certo.",
-    "banheiro":    "Solucao inteligente para banheiro. Maximiza o espaco e mantem tudo organizado sem perfurar paredes.",
-    "limpeza":     "Facilita a limpeza do dia a dia. Economiza tempo e esfoco com um resultado muito melhor.",
-    "decoracao":   "Transforma o ambiente com estilo. Decoracao moderna que combina com qualquer estilo de casa.",
-    "organizacao": "Organiza de uma vez por todas. Chega de perder tempo procurando as coisas em casa.",
+    "cozinha":     "Produto pratico para organizar sua cozinha e resolver o problema de espaco.",
+    "banheiro":    "Solucao inteligente para o banheiro. Maximiza espaco sem perfurar paredes.",
+    "limpeza":     "Facilita a limpeza do dia a dia. Economiza tempo com resultado muito melhor.",
+    "decoracao":   "Transforma o ambiente com estilo moderno que combina com qualquer casa.",
+    "organizacao": "Organiza de uma vez por todas. Chega de perder tempo procurando as coisas.",
+}
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; ProdutoBot/1.0)",
+    "Accept": "application/json",
 }
 
 
 def _gemini(prompt):
-    """Chama Gemini com timeout curto para falhar rapido e usar fallback."""
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    """Chama Gemini com timeout curto para falhar rapido."""
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
     r = requests.post(url, params={"key": GEMINI_API_KEY},
         json={"contents": [{"parts": [{"text": prompt}]}],
               "generationConfig": {"maxOutputTokens": 300}},
@@ -50,7 +49,7 @@ def _gemini(prompt):
 def gerar_queries(comodo):
     """Pede ao Gemini 3 queries. Usa fallback imediato se falhar."""
     try:
-        r = _gemini("Gere 3 queries de busca em portugues (max 5 palavras cada) para produtos virais de " + comodo + " no Mercado Livre. Retorne APENAS as 3 queries, uma por linha.")
+        r = _gemini("Gere 3 queries de busca em portugues (max 4 palavras) para produtos virais de " + comodo + " no Mercado Livre. Retorne APENAS as 3 queries, uma por linha.")
         queries = [q.strip() for q in r.strip().splitlines() if q.strip()][:3]
         if queries:
             print("  Queries Gemini: " + str(queries))
@@ -74,17 +73,19 @@ def gerar_detalhes(nome, preco, comodo):
 
 
 def buscar_ml(query, comodo):
-    """Busca na API publica do ML e retorna o melhor produto."""
+    """Busca na API publica do ML sem autenticacao."""
     try:
+        # Sem sort=sold_quantity_desc pois requer auth - usamos sort por relevancia
         resp = requests.get("https://api.mercadolibre.com/sites/MLB/search",
-            params={"q": query, "sort": "sold_quantity_desc", "limit": 20, "condition": "new"},
-            timeout=15)
+            params={"q": query, "limit": 20, "condition": "new"},
+            headers=HEADERS, timeout=15)
         resp.raise_for_status()
         resultados = resp.json().get("results", [])
     except Exception as e:
         print("  ML API erro: " + str(e))
         return None
 
+    # Filtra por preco e quantidade de vendas
     filtrados = [p for p in resultados if 15 <= p.get("price", 0) <= 120
         and p.get("thumbnail", "").startswith("http") and p.get("sold_quantity", 0) >= 50]
     if not filtrados:
@@ -93,9 +94,13 @@ def buscar_ml(query, comodo):
     if not filtrados:
         return None
 
+    # Ordena pelos mais vendidos
+    filtrados.sort(key=lambda p: p.get("sold_quantity", 0), reverse=True)
     melhor = filtrados[0]
+
     try:
-        det = requests.get("https://api.mercadolibre.com/items/" + melhor["id"], timeout=10).json()
+        det = requests.get("https://api.mercadolibre.com/items/" + melhor["id"],
+            headers=HEADERS, timeout=10).json()
         imagem = det.get("pictures", [{}])[0].get("url", melhor["thumbnail"])
         imagem = re.sub(r"-[A-Z]\.jpg$", "-O.jpg", imagem)
     except Exception:
