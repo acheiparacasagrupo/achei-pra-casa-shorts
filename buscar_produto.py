@@ -53,7 +53,7 @@ ML_HDRS = {
 
 def _gemini(prompt: str) -> str:
     client = genai.Client(api_key=GEMINI_API_KEY)
-    resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+    resp = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     return resp.text.strip()
 
 
@@ -281,7 +281,7 @@ def buscar_no_ml(query: str) -> dict:
 # IMAGEM FALLBACK: Unsplash (sem API key, imagens reais)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def buscar_imagem_fallbach(query: str) -> str:
+def buscar_imagem_fallback(query: str) -> str:
     """Tenta Unsplash Source antes do placeholder laranja."""
     kw = query[:60].replace(" ", ",")
     for url in [
