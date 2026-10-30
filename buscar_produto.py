@@ -23,9 +23,25 @@ COMODOS = ["cozinha", "banheiro", "limpeza", "decoracao", "organizacao"]
 # ââ Gemini ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def _gemini(prompt: str) -> str:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    resp = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-    return resp.text.strip()
+    """Chama a API REST do Gemini com retry automatico."""
+    import time
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+    params = {"key": GEMINI_API_KEY}
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 500},
+    }
+    for attempt in range(3):
+        try:
+            r = requests.post(url, params=params, json=body, timeout=60)
+            r.raise_for_status()
+            return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except Exception as e:
+            if attempt < 2:
+                print(f"  Gemini tentativa {attempt + 1} falhou: {e}. Retentando em 5s...")
+                time.sleep(5)
+            else:
+                raise
 
 
 def gerar_queries(comodo: str) -> list:
