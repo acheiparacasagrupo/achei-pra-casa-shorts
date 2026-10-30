@@ -29,11 +29,14 @@ jobs:
       - name: Instalar dependencias
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
-          pip install -q edge-tts==7.3.1 pillow requests
+          pip install -q edge-tts==7.3.1 pillow requests gspread google-auth
 
       - name: Escolher proximo produto da planilha
         id: prox
-        run: python proximo.py
+        env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      run: python proximo.py
 
       - name: Gerar video
         if: steps.prox.outputs.pular == '0'
